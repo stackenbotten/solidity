@@ -145,8 +145,6 @@ sub_0: assembly {
       dup4
       not(0xffffffffffffffff)
       and
-      not(0xffffffffffffffff)
-      and
       dup2
       mstore
       0x18

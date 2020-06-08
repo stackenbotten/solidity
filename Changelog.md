@@ -5,6 +5,7 @@ Compiler Features:
 
 Bugfixes:
  * Type Checker: Fix overload resolution in combination with ``{value: ...}``.
+ * Code Generator: Avoid double cleanup when copying to memory.
 
 Compiler Features:
  * Optimizer: Add rule to remove shifts inside the byte opcode.
