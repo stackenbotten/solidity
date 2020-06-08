@@ -1,0 +1,14 @@
+Warning: Source file does not specify required compiler version!
+--> avoid_double_cleanup/input.sol
+
+Warning: Unused local variable.
+ --> avoid_double_cleanup/input.sol:8:9:
+  |
+8 |         bytes32 node = sha256(abi.encodePacked(
+  |         ^^^^^^^^^^^^
+
+Warning: Function state mutability can be restricted to pure
+ --> avoid_double_cleanup/input.sol:4:3:
+  |
+4 |   function f() external {
+  |   ^ (Relevant source part starts here and spans across multiple lines).
