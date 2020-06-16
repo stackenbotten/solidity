@@ -1,5 +1,8 @@
 ### 0.6.12 (unreleased)
 
+Language Features:
+ * Allow function definitions outside of contracts, behaving much like internal library functions.
+
 Compiler Features:
  * Code Generator: Evaluate ``keccak256`` of string literals at compile-time.
 
