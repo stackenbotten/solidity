@@ -464,14 +464,6 @@ StateMutability Parser::parseStateMutability()
 		case Token::Pure:
 			stateMutability = StateMutability::Pure;
 			break;
-		case Token::Constant:
-			stateMutability = StateMutability::View;
-			parserError(
-				7698_error,
-				"The state mutability modifier \"constant\" was removed in version 0.5.0. "
-				"Use \"view\" or \"pure\" instead."
-			);
-			break;
 		default:
 			solAssert(false, "Invalid state mutability specifier.");
 	}
@@ -744,7 +736,7 @@ ASTPointer<VariableDeclaration> Parser::parseVariableDeclaration(
 		{
 			if (_options.allowIndexed && token == Token::Indexed)
 				isIndexed = true;
-			else if (token == Token::Constant || token == Token::Immutable)
+			else if (token == Token::Immutable)
 			{
 				if (mutability != VariableDeclaration::Mutability::Mutable)
 					parserError(
@@ -752,8 +744,6 @@ ASTPointer<VariableDeclaration> Parser::parseVariableDeclaration(
 						string("Mutability already set to ") +
 						(mutability == VariableDeclaration::Mutability::Constant ? "\"constant\"" : "\"immutable\"")
 					);
-				else if (token == Token::Constant)
-					mutability = VariableDeclaration::Mutability::Constant;
 				else if (token == Token::Immutable)
 					mutability = VariableDeclaration::Mutability::Immutable;
 			}
@@ -997,7 +987,7 @@ ASTPointer<TypeName> Parser::parseTypeName(bool _allowVar)
 		auto stateMutability = elemTypeName.token() == Token::Address
 			? optional<StateMutability>{StateMutability::NonPayable}
 			: nullopt;
-		if (TokenTraits::isStateMutabilitySpecifier(m_scanner->currentToken(), false))
+		if (TokenTraits::isStateMutabilitySpecifier(m_scanner->currentToken()))
 		{
 			if (elemTypeName.token() == Token::Address)
 			{
@@ -2070,7 +2060,7 @@ Parser::LookAheadInfo Parser::peekStatementType() const
 		// kind of statement. This means, for example, that we do not allow type expressions of the form
 		// ``address payable;``.
 		// If we want to change this in the future, we need to consider another scanner token here.
-		if (TokenTraits::isElementaryTypeName(token) && TokenTraits::isStateMutabilitySpecifier(next, false))
+		if (TokenTraits::isElementaryTypeName(token) && TokenTraits::isStateMutabilitySpecifier(next))
 			return LookAheadInfo::VariableDeclaration;
 		if (next == Token::Identifier || TokenTraits::isLocationSpecifier(next))
 			return LookAheadInfo::VariableDeclaration;

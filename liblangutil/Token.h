@@ -148,7 +148,6 @@ namespace solidity::langutil
 	K(As, "as", 0)                                                     \
 	K(Assembly, "assembly", 0)                                         \
 	K(Break, "break", 0)                                               \
-	K(Constant, "constant", 0)                                         \
 	K(Constructor, "constructor", 0)                                   \
 	K(Continue, "continue", 0)                                         \
 	K(Contract, "contract", 0)                                         \
@@ -307,10 +306,9 @@ namespace TokenTraits
 	constexpr bool isVisibilitySpecifier(Token op) { return isVariableVisibilitySpecifier(op) || op == Token::External; }
 	constexpr bool isLocationSpecifier(Token op) { return op == Token::Memory || op == Token::Storage || op == Token::CallData; }
 
-	constexpr bool isStateMutabilitySpecifier(Token op, bool _allowConstant = true)
+	constexpr bool isStateMutabilitySpecifier(Token op)
 	{
-		return (op == Token::Constant && _allowConstant)
-			|| op == Token::Pure || op == Token::View || op == Token::Payable;
+		return  op == Token::Pure || op == Token::View || op == Token::Payable;
 	}
 
 	constexpr bool isEtherSubdenomination(Token op) { return op == Token::SubWei || op == Token::SubSzabo || op == Token::SubFinney || op == Token::SubEther; }
