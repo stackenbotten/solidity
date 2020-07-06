@@ -203,23 +203,29 @@ Function Overriding
 
 Base functions can be overridden by inheriting contracts to change their
 behavior if they are marked as ``virtual``. The overriding function must then
-use the ``override`` keyword in the function header as shown in this example:
+use the ``override`` keyword in the function header.
+The overriding function may not change the visibility of the overridden function except from ``external`` to ``public``.
+The mutability may be changed to a more strict one following this order of strictness:
+``nonpayable`` can be overridden by ``view`` which can be overridden by ``pure``.
+``payable`` is an exception and cannot be changed to any other mutability.
+
+The following example demonstrates changing mutability and visibility:
 
 ::
 
     // SPDX-License-Identifier: GPL-3.0
-    pragma solidity >=0.6.0 <0.7.0;
+    pragma solidity >0.6.11 <0.7.0;
 
     contract Base
     {
-        function foo() virtual public {}
+        function foo() virtual view external {}
     }
 
     contract Middle is Base {}
 
     contract Inherited is Middle
     {
-        function foo() public override {}
+        function foo() public pure override {}
     }
 
 For multiple inheritance, the most derived base contracts that define the same
