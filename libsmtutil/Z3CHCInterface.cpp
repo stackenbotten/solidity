@@ -46,6 +46,11 @@ Z3CHCInterface::Z3CHCInterface():
 	// Ground pobs by using values from a model.
 	p.set("fp.spacer.ground_pobs", false);
 
+	// Disable Spacer optimization for counterexample generation.
+	p.set("fp.xform.slice", false);
+	p.set("fp.xform.inline_linear", false);
+	p.set("fp.xform.inline_eager", false);
+
 	m_solver.set(p);
 }
 
