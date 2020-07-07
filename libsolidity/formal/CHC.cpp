@@ -28,6 +28,9 @@
 #include <libsmtutil/CHCSmtLib2Interface.h>
 #include <libsolutil/Algorithms.h>
 
+#include <boost/algorithm/string/join.hpp>
+#include <boost/range/adaptor/reversed.hpp>
+
 using namespace std;
 using namespace solidity;
 using namespace solidity::util;
@@ -121,6 +124,7 @@ bool CHC::visit(ContractDefinition const& _contract)
 	string suffix = _contract.name() + "_" + to_string(_contract.id());
 	m_errorPredicate = createSymbolicBlock(arity0FunctionSort(), "error_" + suffix);
 	m_constructorSummaryPredicate = createSymbolicBlock(constructorSort(), "summary_constructor_" + suffix);
+	m_symbolFunction[m_constructorSummaryPredicate->currentFunctionValue().name] = &_contract;
 	m_implicitConstructorPredicate = createSymbolicBlock(arity0FunctionSort(), "implicit_constructor_" + suffix);
 	auto stateExprs = currentStateVariables();
 	setCurrentBlock(*m_interfaces.at(m_currentContract), &stateExprs);
@@ -141,12 +145,16 @@ void CHC::endVisit(ContractDefinition const& _contract)
 	else
 		inlineConstructorHierarchy(_contract);
 
-	auto summary = predicate(*m_constructorSummaryPredicate, vector<smtutil::Expression>{m_error.currentValue()} + currentStateVariables());
-	connectBlocks(m_currentBlock, summary);
+	connectBlocks(m_currentBlock, summary(_contract));
 
 	clearIndices(m_currentContract, nullptr);
-	auto stateExprs = vector<smtutil::Expression>{m_error.currentValue()} + currentStateVariables();
-	setCurrentBlock(*m_constructorSummaryPredicate, &stateExprs);
+	vector<smtutil::Expression> symbArgs;
+	if (auto const* constructor = _contract.constructor())
+		symbArgs = currentFunctionVariables(*constructor);
+	else
+		symbArgs = vector<smtutil::Expression>{m_error.currentValue()} + currentStateVariables();
+
+	setCurrentBlock(*m_constructorSummaryPredicate, &symbArgs);
 
 	addAssertVerificationTarget(m_currentContract, m_currentBlock, smtutil::Expression(true), m_error.currentValue());
 	connectBlocks(m_currentBlock, interface(), m_error.currentValue() == 0);
@@ -227,10 +235,10 @@ void CHC::endVisit(FunctionDefinition const& _function)
 		{
 			string suffix = m_currentContract->name() + "_" + to_string(m_currentContract->id());
 			auto constructorExit = createSymbolicBlock(constructorSort(), "constructor_exit_" + suffix);
-			connectBlocks(m_currentBlock, predicate(*constructorExit, vector<smtutil::Expression>{m_error.currentValue()} + currentStateVariables()));
+			connectBlocks(m_currentBlock, predicate(*constructorExit, currentFunctionVariables(_function)));
 
 			clearIndices(m_currentContract, m_currentFunction);
-			auto stateExprs = vector<smtutil::Expression>{m_error.currentValue()} + currentStateVariables();
+			auto stateExprs = currentFunctionVariables(_function);
 			setCurrentBlock(*constructorExit, &stateExprs);
 		}
 		else
@@ -612,6 +620,7 @@ void CHC::resetSourceAnalysis()
 	m_errorIds.clear();
 	m_callGraph.clear();
 	m_summaries.clear();
+	m_symbolFunction.clear();
 }
 
 void CHC::resetContractAnalysis()
@@ -692,6 +701,10 @@ vector<smtutil::SortPointer> CHC::stateSorts(ContractDefinition const& _contract
 
 smtutil::SortPointer CHC::constructorSort()
 {
+	solAssert(m_currentContract, "");
+	if (auto const* constructor = m_currentContract->constructor())
+		return sort(*constructor);
+
 	return make_shared<smtutil::FunctionSort>(
 		vector<smtutil::SortPointer>{smtutil::SortProvider::uintSort} + m_stateSorts,
 		smtutil::SortProvider::boolSort
@@ -879,8 +892,13 @@ smtutil::Expression CHC::error(unsigned _idx)
 	return m_errorPredicate->functionValueAtIndex(_idx)({});
 }
 
-smtutil::Expression CHC::summary(ContractDefinition const&)
+smtutil::Expression CHC::summary(ContractDefinition const& _contract)
 {
+	if (auto const* constructor = _contract.constructor())
+		return (*m_constructorSummaryPredicate)(
+			currentFunctionVariables(*constructor)
+		);
+
 	return (*m_constructorSummaryPredicate)(
 		vector<smtutil::Expression>{m_error.currentValue()} +
 		currentStateVariables()
@@ -907,21 +925,28 @@ smtutil::Expression CHC::summary(FunctionDefinition const& _function)
 
 unique_ptr<smt::SymbolicFunctionVariable> CHC::createBlock(ASTNode const* _node, string const& _prefix)
 {
-	return createSymbolicBlock(sort(_node),
+	auto block = createSymbolicBlock(sort(_node),
 		"block_" +
 		uniquePrefix() +
 		"_" +
 		_prefix +
 		predicateName(_node));
+
+	solAssert(m_currentFunction, "");
+	m_symbolFunction[block->currentFunctionValue().name] = m_currentFunction;
+	return block;
 }
 
 unique_ptr<smt::SymbolicFunctionVariable> CHC::createSummaryBlock(FunctionDefinition const& _function, ContractDefinition const& _contract)
 {
-	return createSymbolicBlock(summarySort(_function, _contract),
+	auto block = createSymbolicBlock(summarySort(_function, _contract),
 		"summary_" +
 		uniquePrefix() +
 		"_" +
 		predicateName(&_function, &_contract));
+
+	m_symbolFunction[block->currentFunctionValue().name] = &_function;
+	return block;
 }
 
 void CHC::createErrorBlock()
@@ -977,14 +1002,20 @@ vector<smtutil::Expression> CHC::currentStateVariables(ContractDefinition const&
 
 vector<smtutil::Expression> CHC::currentFunctionVariables()
 {
+	solAssert(m_currentFunction, "");
+	return currentFunctionVariables(*m_currentFunction);
+}
+
+vector<smtutil::Expression> CHC::currentFunctionVariables(FunctionDefinition const& _function)
+{
 	vector<smtutil::Expression> initInputExprs;
 	vector<smtutil::Expression> mutableInputExprs;
-	for (auto const& var: m_currentFunction->parameters())
+	for (auto const& var: _function.parameters())
 	{
 		initInputExprs.push_back(m_context.variable(*var)->valueAtIndex(0));
 		mutableInputExprs.push_back(m_context.variable(*var)->currentValue());
 	}
-	auto returnExprs = applyMap(m_currentFunction->returnParameters(), [this](auto _var) { return currentValue(*_var); });
+	auto returnExprs = applyMap(_function.returnParameters(), [this](auto _var) { return currentValue(*_var); });
 	return vector<smtutil::Expression>{m_error.currentValue()} +
 		initialStateVariables() +
 		initInputExprs +
@@ -1205,6 +1236,137 @@ void CHC::checkAndReportTarget(
 			_scope->location(),
 			_unknownMsg
 		);
+}
+
+optional<string> CHC::generateCounterexample(CHCSolverInterface::CexGraph const& _graph, string const& _root)
+{
+	optional<unsigned> rootId;
+	for (auto const& [id, node]: _graph.nodes)
+		if (node.first == _root)
+		{
+			rootId = id;
+			break;
+		}
+	if (!rootId)
+		return {};
+
+	vector<string> path;
+	string localState;
+
+	unsigned node = *rootId;
+	string firstSummary;
+	// summary && interface?
+	while (_graph.edges.at(node).size() >= 1)
+	{
+		auto const& edges = _graph.edges.at(node);
+		solAssert(edges.size() <= 2, "");
+
+		unsigned summaryId = edges.at(0);
+
+		optional<unsigned> interfaceId;
+		if (edges.size() == 2)
+		{
+			interfaceId = edges.at(1);
+			if (_graph.nodes.at(summaryId).first.rfind("summary", 0) != 0)
+				swap(summaryId, *interfaceId);
+			solAssert(_graph.nodes.at(*interfaceId).first.rfind("interface", 0) == 0, "");
+		}
+
+		solAssert(_graph.nodes.at(summaryId).first.rfind("summary", 0) == 0, "");
+
+		auto const& summaryNode = _graph.nodes.at(summaryId);
+		solAssert(m_symbolFunction.count(summaryNode.first), "");
+
+		FunctionDefinition const* failedFun = nullptr;
+		ContractDefinition const* failedContract = nullptr;
+		if (auto const* contract = dynamic_cast<ContractDefinition const*>(m_symbolFunction.at(summaryNode.first)))
+		{
+			if (auto const* constructor = contract->constructor())
+				failedFun = constructor;
+			else
+				failedContract = contract;
+		}
+		else if (auto const* fun = dynamic_cast<FunctionDefinition const*>(m_symbolFunction.at(summaryNode.first)))
+			failedFun = fun;
+		else
+			solAssert(false, "");
+
+		solAssert((failedFun && !failedContract) || (!failedFun && failedContract), "");
+
+		/// This `summary` node is the end of a tx.
+		/// If it is the first `summary` node seen in this loop, it is the summary
+		/// of the public function that was called when the assertion failed,
+		/// but not necessarily the `summary` of the function that contains the
+		/// failed assertion.
+		if (firstSummary == "")
+		{
+			firstSummary = summaryNode.first;
+
+			/// Generate counterexample message local to the failed assertion.
+			localState = generateStateCounterexample(summaryNode.second) + "\n";
+			if (failedFun)
+			{
+				auto const& inParams = failedFun->parameters();
+				unsigned initLocals = m_stateVariables.size() * 2 + 1 + inParams.size();
+				auto const& outParams = failedFun->returnParameters();
+				for (unsigned i = initLocals; i < initLocals + inParams.size(); ++i)
+				{
+					shared_ptr<VariableDeclaration> param = inParams.at(i - initLocals);
+					if (param->type()->isValueType())
+						localState += param->name() + " = " + summaryNode.second.at(i) + "\n";
+				}
+				initLocals += inParams.size();
+				for (unsigned i = initLocals; i < initLocals + outParams.size(); ++i)
+				{
+					shared_ptr<VariableDeclaration> param = outParams.at(i - initLocals);
+					if (param->type()->isValueType())
+						localState += param->name() + " = " + summaryNode.second.at(i) + "\n";
+				}
+			}
+		}
+
+		string txCex = failedContract ? "constructor()" : generateTxCounterexample(*failedFun, summaryNode.second);
+		path.emplace_back(txCex);
+
+		if (!failedContract && !failedFun->isConstructor())
+			path.emplace_back("State: " + generateStateCounterexample(summaryNode.second));
+
+		if (interfaceId)
+			node = *interfaceId;
+		else
+			break;
+	}
+
+	return localState + "\nTransaction trace:\n" + boost::algorithm::join(boost::adaptors::reverse(path), "\n");
+}
+
+string CHC::generateStateCounterexample(vector<string> const& _args)
+{
+	vector<string>::const_iterator stateFirst = _args.begin() + 1;
+	vector<string>::const_iterator stateLast = _args.begin() + 1 + m_stateSorts.size();
+	vector<string> stateArgs(stateFirst, stateLast);
+	solAssert(stateArgs.size() == m_stateVariables.size(), "");
+
+	string state;
+	for (unsigned i = 0; i < stateArgs.size(); ++i)
+	{
+		if (i > 0)
+			state += ", ";
+		state += m_stateVariables.at(i)->name() + " = " + stateArgs.at(i);
+	}
+
+	return state;
+}
+
+string CHC::generateTxCounterexample(FunctionDefinition const& _function, vector<string> const& _args)
+{
+	vector<string>::const_iterator first = _args.begin() + m_stateSorts.size() + 1;
+	vector<string>::const_iterator last = _args.begin() + m_stateSorts.size() + 1 + _function.parameters().size();
+	vector<string> functionArgs(first, last);
+	return (_function.isConstructor() ? "constructor" : _function.name()) +
+		"("
+		+ boost::algorithm::join(functionArgs, ", ") +
+		")";
 }
 
 string CHC::uniquePrefix()

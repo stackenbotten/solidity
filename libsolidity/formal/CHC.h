@@ -37,6 +37,7 @@
 #include <libsmtutil/CHCSolverInterface.h>
 
 #include <map>
+#include <optional>
 #include <set>
 
 namespace solidity::frontend
@@ -163,6 +164,8 @@ private:
 	/// @returns the current symbolic values of the current function's
 	/// input and output parameters.
 	std::vector<smtutil::Expression> currentFunctionVariables();
+	std::vector<smtutil::Expression> currentFunctionVariables(FunctionDefinition const& _function);
+
 	/// @returns the same as currentFunctionVariables plus
 	/// local variables.
 	std::vector<smtutil::Expression> currentBlockVariables();
@@ -205,6 +208,10 @@ private:
 		std::string _satMsg,
 		std::string _unknownMsg
 	);
+
+	std::optional<std::string> generateCounterexample(smtutil::CHCSolverInterface::CexGraph const& _graph, std::string const& _root);
+	std::string generateStateCounterexample(std::vector<std::string> const& _args);
+	std::string generateTxCounterexample(FunctionDefinition const& _function, std::vector<std::string> const& _args);
 	//@}
 
 	/// Misc.
@@ -254,6 +261,9 @@ private:
 		"error",
 		m_context
 	};
+
+	/// Maps predicate names to the ASTNodes they came from.
+	std::map<std::string, ASTNode const*> m_symbolFunction;
 	//@}
 
 	/// Variables.
