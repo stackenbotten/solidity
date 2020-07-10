@@ -43,6 +43,8 @@ public:
 	/// Needs to bound all vars as universally quantified.
 	virtual void addRule(Expression const& _expr, std::string const& _name) = 0;
 
+	/// first: predicate name
+	/// second: predicate arguments
 	using CexNode = std::pair<std::string, std::vector<std::string>>;
 	struct CexGraph
 	{
