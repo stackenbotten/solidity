@@ -148,12 +148,7 @@ void CHC::endVisit(ContractDefinition const& _contract)
 	connectBlocks(m_currentBlock, summary(_contract));
 
 	clearIndices(m_currentContract, nullptr);
-	vector<smtutil::Expression> symbArgs;
-	if (auto const* constructor = _contract.constructor())
-		symbArgs = currentFunctionVariables(*constructor);
-	else
-		symbArgs = vector<smtutil::Expression>{m_error.currentValue()} + currentStateVariables();
-
+	vector<smtutil::Expression> symbArgs = currentFunctionVariables(*m_currentContract);
 	setCurrentBlock(*m_constructorSummaryPredicate, &symbArgs);
 
 	addAssertVerificationTarget(m_currentContract, m_currentBlock, smtutil::Expression(true), m_error.currentValue());
@@ -1024,6 +1019,14 @@ vector<smtutil::Expression> CHC::currentFunctionVariables(FunctionDefinition con
 		returnExprs;
 }
 
+vector<smtutil::Expression> CHC::currentFunctionVariables(ContractDefinition const& _contract)
+{
+	if (auto const* constructor = _contract.constructor())
+		return currentFunctionVariables(*constructor);
+
+	return vector<smtutil::Expression>{m_error.currentValue()} + currentStateVariables();
+}
+
 vector<smtutil::Expression> CHC::currentBlockVariables()
 {
 	if (m_currentFunction)
@@ -1117,6 +1120,7 @@ pair<smtutil::CheckResult, CHCSolverInterface::CexGraph> CHC::query(smtutil::Exp
 		// Even though the problem is SAT, Spacer's pre processing makes counterexamples incomplete.
 		// We now disable those optimizations and check whether we can still solve the problem.
 		auto* spacer = dynamic_cast<Z3CHCInterface*>(m_interface.get());
+		solAssert(spacer, "");
 		spacer->disablePreProcessing();
 
 		smtutil::CheckResult resultNoOpt;
