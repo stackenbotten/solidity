@@ -211,8 +211,15 @@ private:
 	);
 
 	std::optional<std::string> generateCounterexample(smtutil::CHCSolverInterface::CexGraph const& _graph, std::string const& _root);
-	std::string generateStateCounterexample(std::vector<std::string> const& _args);
-	std::string generateTxCounterexample(FunctionDefinition const& _function, std::vector<std::string> const& _args);
+	/// @returns values for the state variables after a transaction calling
+	/// _function was executed.
+	/// _function = nullptr means the transaction was the deployment of a
+	/// contract without an explicit constructor.
+	std::string generatePostStateCounterexample(FunctionDefinition const* _function, std::vector<std::string> const& _summaryValues);
+	/// @returns a formatted text representing a call to _function
+	/// with the concrete values for value type parameters and
+	/// the parameter name for reference types.
+	std::string generatePreTxCounterexample(FunctionDefinition const& _function, std::vector<std::string> const& _summaryValues);
 	//@}
 
 	/// Misc.

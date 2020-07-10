@@ -1238,15 +1238,18 @@ void CHC::checkAndReportTarget(
 		m_unsafeTargets[_scope].insert(_target.type);
 		auto cex = generateCounterexample(model, error().name);
 		if (cex)
-			_satMsg += " for:\n" + *cex;
+			m_outerErrorReporter.warning(
+				_errorReporterId,
+				_scope->location(),
+				_satMsg,
+				SecondarySourceLocation().append(" for:\n" + *cex, SourceLocation{})
+			);
 		else
-			_satMsg += ".";
-
-		m_outerErrorReporter.warning(
-			_errorReporterId,
-			_scope->location(),
-			_satMsg
-		);
+			m_outerErrorReporter.warning(
+				_errorReporterId,
+				_scope->location(),
+				_satMsg + "."
+			);
 	}
 	else if (!_unknownMsg.empty())
 		m_outerErrorReporter.warning(
@@ -1289,8 +1292,7 @@ optional<string> CHC::generateCounterexample(CHCSolverInterface::CexGraph const&
 	string localState;
 
 	unsigned node = *rootId;
-	string firstSummary;
-
+	optional<string> lastTxSeen;
 	while (_graph.edges.at(node).size() >= 1)
 	{
 		auto const& edges = _graph.edges.at(node);
@@ -1308,64 +1310,71 @@ optional<string> CHC::generateCounterexample(CHCSolverInterface::CexGraph const&
 		}
 
 		solAssert(_graph.nodes.at(summaryId).first.rfind("summary", 0) == 0, "");
+		/// At this point property 2 from the function description is verified for this node.
 
 		auto const& summaryNode = _graph.nodes.at(summaryId);
 		solAssert(m_symbolFunction.count(summaryNode.first), "");
 
-		FunctionDefinition const* failedFun = nullptr;
-		ContractDefinition const* failedContract = nullptr;
+		FunctionDefinition const* calledFun = nullptr;
+		ContractDefinition const* calledContract = nullptr;
 		if (auto const* contract = dynamic_cast<ContractDefinition const*>(m_symbolFunction.at(summaryNode.first)))
 		{
 			if (auto const* constructor = contract->constructor())
-				failedFun = constructor;
+				calledFun = constructor;
 			else
-				failedContract = contract;
+				calledContract = contract;
 		}
 		else if (auto const* fun = dynamic_cast<FunctionDefinition const*>(m_symbolFunction.at(summaryNode.first)))
-			failedFun = fun;
+			calledFun = fun;
 		else
 			solAssert(false, "");
 
-		solAssert((failedFun && !failedContract) || (!failedFun && failedContract), "");
+		solAssert((calledFun && !calledContract) || (!calledFun && calledContract), "");
+		/// calledContract != nullptr implies that the constructor of the analyzed contract is implicit and
+		/// therefore takes no parameters.
 
-		/// This `summary` node is the end of a tx.
-		/// If it is the first `summary` node seen in this loop, it is the summary
-		/// of the public function that was called when the assertion failed,
-		/// but not necessarily the `summary` of the function that contains the
-		/// failed assertion.
-		if (firstSummary == "")
+		/// This summary node is the end of a tx.
+		/// If it is the first summary node seen in this loop, it is the summary
+		/// of the public/external function that was called when the error was reached,
+		/// but not necessarily the summary of the function that contains the error.
+		if (!lastTxSeen)
 		{
-			firstSummary = summaryNode.first;
-
-			/// Generate counterexample message local to the failed assertion.
-			localState = generateStateCounterexample(summaryNode.second) + "\n";
-			if (failedFun)
+			lastTxSeen = summaryNode.first;
+			/// Generate counterexample message local to the failed target.
+			localState = generatePostStateCounterexample(calledFun, summaryNode.second) + "\n";
+			if (calledFun)
 			{
-				auto const& inParams = failedFun->parameters();
+				/// The signature of a summary predicate is: summary(error, preStateVars, preInputVars, postInputVars, outputVars).
+				auto const& inParams = calledFun->parameters();
 				unsigned initLocals = m_stateVariables.size() * 2 + 1 + inParams.size();
-				auto const& outParams = failedFun->returnParameters();
+				/// In this loop we are interested in postInputVars.
 				for (unsigned i = initLocals; i < initLocals + inParams.size(); ++i)
 				{
-					shared_ptr<VariableDeclaration> param = inParams.at(i - initLocals);
+					auto param = inParams.at(i - initLocals);
 					if (param->type()->isValueType())
 						localState += param->name() + " = " + summaryNode.second.at(i) + "\n";
 				}
+				auto const& outParams = calledFun->returnParameters();
 				initLocals += inParams.size();
+				/// In this loop we are interested in outputVars.
 				for (unsigned i = initLocals; i < initLocals + outParams.size(); ++i)
 				{
-					shared_ptr<VariableDeclaration> param = outParams.at(i - initLocals);
+					auto param = outParams.at(i - initLocals);
 					if (param->type()->isValueType())
 						localState += param->name() + " = " + summaryNode.second.at(i) + "\n";
 				}
 			}
 		}
+		else
+			/// We report the state after every tx in the trace except for the last, which is reported
+			/// first in the code above.
+			path.emplace_back("State: " + generatePostStateCounterexample(calledFun, summaryNode.second));
 
-		string txCex = failedContract ? "constructor()" : generateTxCounterexample(*failedFun, summaryNode.second);
+		string txCex = calledContract ? "constructor()" : generatePreTxCounterexample(*calledFun, summaryNode.second);
 		path.emplace_back(txCex);
 
-		if (!failedContract && !failedFun->isConstructor())
-			path.emplace_back("State: " + generateStateCounterexample(summaryNode.second));
-
+		/// Recurse on the next interface node which represents the previous transaction
+		/// or stop.
 		if (interfaceId)
 			node = *interfaceId;
 		else
@@ -1375,10 +1384,24 @@ optional<string> CHC::generateCounterexample(CHCSolverInterface::CexGraph const&
 	return localState + "\nTransaction trace:\n" + boost::algorithm::join(boost::adaptors::reverse(path), "\n");
 }
 
-string CHC::generateStateCounterexample(vector<string> const& _args)
+string CHC::generatePostStateCounterexample(FunctionDefinition const* _function, vector<string> const& _summaryValues)
 {
-	vector<string>::const_iterator stateFirst = _args.begin() + 1;
-	vector<string>::const_iterator stateLast = _args.begin() + 1 + m_stateSorts.size();
+	/// The signature of a function summary predicate is: summary(error, preStateVars, preInputVars, postInputVars, outputVars).
+	/// The signature of an implicit constructor summary predicate is: summary(error, postStateVars).
+	/// Here we are interested in postStateVars.
+	vector<string>::const_iterator stateFirst;
+	vector<string>::const_iterator stateLast;
+	if (_function)
+	{
+		stateFirst = _summaryValues.begin() + 1 + m_stateSorts.size() + _function->parameters().size();
+		stateLast = stateFirst + m_stateVariables.size();
+	}
+	else
+	{
+		stateFirst = _summaryValues.begin() + 1;
+		stateLast = stateFirst + m_stateVariables.size();
+	}
+
 	vector<string> stateArgs(stateFirst, stateLast);
 	solAssert(stateArgs.size() == m_stateVariables.size(), "");
 
@@ -1393,11 +1416,23 @@ string CHC::generateStateCounterexample(vector<string> const& _args)
 	return boost::algorithm::join(stateCex, ", ");
 }
 
-string CHC::generateTxCounterexample(FunctionDefinition const& _function, vector<string> const& _args)
+string CHC::generatePreTxCounterexample(FunctionDefinition const& _function, vector<string> const& _summaryValues)
 {
-	vector<string>::const_iterator first = _args.begin() + m_stateSorts.size() + 1;
-	vector<string>::const_iterator last = _args.begin() + m_stateSorts.size() + 1 + _function.parameters().size();
-	vector<string> functionArgs(first, last);
+	/// The signature of a function summary predicate is: summary(error, preStateVars, preInputVars, postInputVars, outputVars).
+	/// Here we are interested in preInputVars.
+	vector<string>::const_iterator first = _summaryValues.begin() + m_stateSorts.size() + 1;
+	vector<string>::const_iterator last = first + _function.parameters().size();
+	vector<string> functionArgsCex(first, last);
+	vector<string> functionArgs;
+
+	auto const& params = _function.parameters();
+	solAssert(params.size() == functionArgsCex.size(), "");
+	for (unsigned i = 0; i < params.size(); ++i)
+		if (params[i]->type()->isValueType())
+			functionArgs.emplace_back(functionArgsCex[i]);
+		else
+			functionArgs.emplace_back(params[i]->name());
+
 	return (_function.isConstructor() ? "constructor" : _function.name()) +
 		"("
 		+ boost::algorithm::join(functionArgs, ", ") +
