@@ -145,7 +145,7 @@ void CHC::endVisit(ContractDefinition const& _contract)
 	else
 		inlineConstructorHierarchy(_contract);
 
-	connectBlocks(m_currentBlock, summary(_contract));
+	connectBlocks(m_currentBlock, summary(_contract), m_error.currentValue() == 0);
 
 	clearIndices(m_currentContract, nullptr);
 	vector<smtutil::Expression> symbArgs = currentFunctionVariables(*m_currentContract);
@@ -229,11 +229,11 @@ void CHC::endVisit(FunctionDefinition const& _function)
 		if (_function.isConstructor())
 		{
 			string suffix = m_currentContract->name() + "_" + to_string(m_currentContract->id());
-			auto constructorExit = createSymbolicBlock(constructorSort(), "constructor_exit_" + suffix);
-			connectBlocks(m_currentBlock, predicate(*constructorExit, currentFunctionVariables(_function)));
+			auto constructorExit = createSymbolicBlock(interfaceSort(), "constructor_exit_" + suffix);
+			connectBlocks(m_currentBlock, predicate(*constructorExit, currentStateVariables()));
 
 			clearIndices(m_currentContract, m_currentFunction);
-			auto stateExprs = currentFunctionVariables(_function);
+			auto stateExprs = currentStateVariables();
 			setCurrentBlock(*constructorExit, &stateExprs);
 		}
 		else
