@@ -1112,7 +1112,24 @@ pair<smtutil::CheckResult, CHCSolverInterface::CexGraph> CHC::query(smtutil::Exp
 	switch (result)
 	{
 	case smtutil::CheckResult::SATISFIABLE:
+	{
+#ifdef HAVE_Z3
+		// Even though the problem is SAT, Spacer's pre processing makes counterexamples incomplete.
+		// We now disable those optimizations and check whether we can still solve the problem.
+		auto* spacer = dynamic_cast<Z3CHCInterface*>(m_interface.get());
+		spacer->disablePreProcessing();
+
+		smtutil::CheckResult resultNoOpt;
+		CHCSolverInterface::CexGraph cexNoOpt;
+		tie(resultNoOpt, cexNoOpt) = m_interface->query(_query);
+
+		if (resultNoOpt == smtutil::CheckResult::SATISFIABLE)
+			cex = move(cexNoOpt);
+
+		spacer->enablePreProcessing();
+#endif
 		break;
+	}
 	case smtutil::CheckResult::UNSATISFIABLE:
 		break;
 	case smtutil::CheckResult::UNKNOWN:
@@ -1239,6 +1256,23 @@ void CHC::checkAndReportTarget(
 		);
 }
 
+/**
+The counterexample DAG has the following properties:
+1) The root node represents the reachable error predicate.
+2) The root node has 1 or 2 children:
+	- One of them is the summary of the function that was called and led to that node.
+	If this is the only child, this function must be the constructor.
+	- If it has 2 children, the function is not the constructor and the other child is the interface node,
+	that is, it represents the state of the contract before the function described above was called.
+3) Interface nodes also have property 2.
+
+The following algorithm starts collecting function summaries at the root node and repeats
+for each interface node seen.
+Each function summary collected represents a transaction, and the final order is reversed.
+
+The first function summary seen contains the values for the state, input and output variables at the
+error point.
+*/
 optional<string> CHC::generateCounterexample(CHCSolverInterface::CexGraph const& _graph, string const& _root)
 {
 	optional<unsigned> rootId;
@@ -1256,7 +1290,7 @@ optional<string> CHC::generateCounterexample(CHCSolverInterface::CexGraph const&
 
 	unsigned node = *rootId;
 	string firstSummary;
-	// summary && interface?
+
 	while (_graph.edges.at(node).size() >= 1)
 	{
 		auto const& edges = _graph.edges.at(node);
