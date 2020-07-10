@@ -205,8 +205,9 @@ private:
 		ASTNode const* _scope,
 		CHCVerificationTarget const& _target,
 		unsigned _errorId,
+		langutil::ErrorId _errorReporterId,
 		std::string _satMsg,
-		std::string _unknownMsg
+		std::string _unknownMsg = ""
 	);
 
 	std::optional<std::string> generateCounterexample(smtutil::CHCSolverInterface::CexGraph const& _graph, std::string const& _root);

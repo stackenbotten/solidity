@@ -1168,19 +1168,21 @@ void CHC::checkVerificationTargets()
 		{
 			string satMsg;
 			string unknownMsg;
+			ErrorId errorReporterId;
 
 			if (target.type == VerificationTarget::Type::PopEmptyArray)
 			{
 				solAssert(dynamic_cast<FunctionCall const*>(scope), "");
-				satMsg = "Empty array \"pop\" detected here.";
+				satMsg = "Empty array \"pop\" detected here";
 				unknownMsg = "Empty array \"pop\" might happen here.";
+				errorReporterId = 2529_error;
 			}
 			else
 				solAssert(false, "");
 
 			auto it = m_errorIds.find(scope->id());
 			solAssert(it != m_errorIds.end(), "");
-			checkAndReportTarget(scope, target, it->second, satMsg, unknownMsg);
+			checkAndReportTarget(scope, target, it->second, errorReporterId, satMsg, unknownMsg);
 		}
 	}
 }
@@ -1195,13 +1197,7 @@ void CHC::checkAssertTarget(ASTNode const* _scope, CHCVerificationTarget const& 
 		solAssert(it != m_errorIds.end(), "");
 		unsigned errorId = it->second;
 
-		createErrorBlock();
-		connectBlocks(_target.value, error(), _target.constraints && (_target.errorId == errorId));
-		auto [result, model] = query(error(), assertion->location());
-		// This should be fine but it's a bug in the old compiler
-		(void)model;
-		if (result == smtutil::CheckResult::UNSATISFIABLE)
-			m_safeTargets[assertion].insert(_target.type);
+		checkAndReportTarget(assertion, _target, errorId, 0000_error, "Assertion violation happens here");
 	}
 }
 
@@ -1209,30 +1205,35 @@ void CHC::checkAndReportTarget(
 	ASTNode const* _scope,
 	CHCVerificationTarget const& _target,
 	unsigned _errorId,
+	ErrorId _errorReporterId,
 	string _satMsg,
 	string _unknownMsg
 )
 {
 	createErrorBlock();
 	connectBlocks(_target.value, error(), _target.constraints && (_target.errorId == _errorId));
-	auto [result, model] = query(error(), _scope->location());
-	// This should be fine but it's a bug in the old compiler
-	(void)model;
+	auto const& [result, model] = query(error(), _scope->location());
 	if (result == smtutil::CheckResult::UNSATISFIABLE)
 		m_safeTargets[_scope].insert(_target.type);
 	else if (result == smtutil::CheckResult::SATISFIABLE)
 	{
 		solAssert(!_satMsg.empty(), "");
 		m_unsafeTargets[_scope].insert(_target.type);
+		auto cex = generateCounterexample(model, error().name);
+		if (cex)
+			_satMsg += " for:\n" + *cex;
+		else
+			_satMsg += ".";
+
 		m_outerErrorReporter.warning(
-			2529_error,
+			_errorReporterId,
 			_scope->location(),
 			_satMsg
 		);
 	}
 	else if (!_unknownMsg.empty())
 		m_outerErrorReporter.warning(
-			1147_error,
+			_errorReporterId,
 			_scope->location(),
 			_unknownMsg
 		);
@@ -1347,15 +1348,15 @@ string CHC::generateStateCounterexample(vector<string> const& _args)
 	vector<string> stateArgs(stateFirst, stateLast);
 	solAssert(stateArgs.size() == m_stateVariables.size(), "");
 
-	string state;
+	vector<string> stateCex;
 	for (unsigned i = 0; i < stateArgs.size(); ++i)
 	{
-		if (i > 0)
-			state += ", ";
-		state += m_stateVariables.at(i)->name() + " = " + stateArgs.at(i);
+		auto var = m_stateVariables.at(i);
+		if (var->type()->isValueType())
+			stateCex.emplace_back(var->name() + " = " + stateArgs.at(i));
 	}
 
-	return state;
+	return boost::algorithm::join(stateCex, ", ");
 }
 
 string CHC::generateTxCounterexample(FunctionDefinition const& _function, vector<string> const& _args)
