@@ -10,4 +10,3 @@ contract C {
 }
 // ----
 // Warning 4661: (116-132): Assertion violation happens here
-// Warning 4661: (116-132): Assertion violation happens here

@@ -20,7 +20,7 @@ contract C
 // Warning 4661: (165-204): Assertion violation happens here
 // Warning 4661: (208-240): Assertion violation happens here
 // Warning 4661: (244-275): Assertion violation happens here
-// Warning 2661: (311-316): Overflow (resulting value larger than 2**256 - 1) happens here
 // Warning 4661: (304-332): Assertion violation happens here
 // Warning 4661: (336-352): Assertion violation happens here
 // Warning 4661: (356-379): Assertion violation happens here
+// Warning 2661: (311-316): Overflow (resulting value larger than 2**256 - 1) happens here

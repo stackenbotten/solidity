@@ -24,4 +24,3 @@ contract B is A {
 // Warning 4661: (121-135): Assertion violation happens here
 // Warning 4661: (170-184): Assertion violation happens here
 // Warning 4661: (286-300): Assertion violation happens here
-// Warning 4661: (170-184): Assertion violation happens here

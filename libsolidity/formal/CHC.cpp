@@ -686,6 +686,11 @@ vector<VariableDeclaration const*> CHC::stateVariablesIncludingInheritedAndPriva
 	);
 }
 
+vector<VariableDeclaration const*> CHC::stateVariablesIncludingInheritedAndPrivate(FunctionDefinition const& _function)
+{
+	return stateVariablesIncludingInheritedAndPrivate(dynamic_cast<ContractDefinition const&>(*_function.scope()));
+}
+
 vector<smtutil::SortPointer> CHC::stateSorts(ContractDefinition const& _contract)
 {
 	return applyMap(
@@ -1218,7 +1223,7 @@ void CHC::checkAssertTarget(ASTNode const* _scope, CHCVerificationTarget const& 
 		solAssert(it != m_errorIds.end(), "");
 		unsigned errorId = it->second;
 
-		checkAndReportTarget(assertion, _target, errorId, 0000_error, "Assertion violation happens here");
+		checkAndReportTarget(assertion, _target, errorId, 4661_error, "Assertion violation happens here");
 	}
 }
 
@@ -1334,6 +1339,7 @@ optional<string> CHC::generateCounterexample(CHCSolverInterface::CexGraph const&
 			solAssert(false, "");
 
 		solAssert((calledFun && !calledContract) || (!calledFun && calledContract), "");
+		auto const& stateVars = calledFun ? stateVariablesIncludingInheritedAndPrivate(*calledFun) : stateVariablesIncludingInheritedAndPrivate(*calledContract);
 		/// calledContract != nullptr implies that the constructor of the analyzed contract is implicit and
 		/// therefore takes no parameters.
 
@@ -1345,12 +1351,12 @@ optional<string> CHC::generateCounterexample(CHCSolverInterface::CexGraph const&
 		{
 			lastTxSeen = summaryNode.first;
 			/// Generate counterexample message local to the failed target.
-			localState = generatePostStateCounterexample(calledFun, summaryNode.second) + "\n";
+			localState = generatePostStateCounterexample(stateVars, calledFun, summaryNode.second) + "\n";
 			if (calledFun)
 			{
 				/// The signature of a summary predicate is: summary(error, preStateVars, preInputVars, postInputVars, outputVars).
 				auto const& inParams = calledFun->parameters();
-				unsigned initLocals = m_stateVariables.size() * 2 + 1 + inParams.size();
+				unsigned initLocals = stateVars.size() * 2 + 1 + inParams.size();
 				/// In this loop we are interested in postInputVars.
 				for (unsigned i = initLocals; i < initLocals + inParams.size(); ++i)
 				{
@@ -1372,9 +1378,9 @@ optional<string> CHC::generateCounterexample(CHCSolverInterface::CexGraph const&
 		else
 			/// We report the state after every tx in the trace except for the last, which is reported
 			/// first in the code above.
-			path.emplace_back("State: " + generatePostStateCounterexample(calledFun, summaryNode.second));
+			path.emplace_back("State: " + generatePostStateCounterexample(stateVars, calledFun, summaryNode.second));
 
-		string txCex = calledContract ? "constructor()" : generatePreTxCounterexample(*calledFun, summaryNode.second);
+		string txCex = calledContract ? "constructor()" : generatePreTxCounterexample(stateVars, *calledFun, summaryNode.second);
 		path.emplace_back(txCex);
 
 		/// Recurse on the next interface node which represents the previous transaction
@@ -1388,7 +1394,7 @@ optional<string> CHC::generateCounterexample(CHCSolverInterface::CexGraph const&
 	return localState + "\nTransaction trace:\n" + boost::algorithm::join(boost::adaptors::reverse(path), "\n");
 }
 
-string CHC::generatePostStateCounterexample(FunctionDefinition const* _function, vector<string> const& _summaryValues)
+string CHC::generatePostStateCounterexample(vector<VariableDeclaration const*> const& _stateVars, FunctionDefinition const* _function, vector<string> const& _summaryValues)
 {
 	/// The signature of a function summary predicate is: summary(error, preStateVars, preInputVars, postInputVars, outputVars).
 	/// The signature of an implicit constructor summary predicate is: summary(error, postStateVars).
@@ -1397,22 +1403,22 @@ string CHC::generatePostStateCounterexample(FunctionDefinition const* _function,
 	vector<string>::const_iterator stateLast;
 	if (_function)
 	{
-		stateFirst = _summaryValues.begin() + 1 + m_stateSorts.size() + _function->parameters().size();
-		stateLast = stateFirst + m_stateVariables.size();
+		stateFirst = _summaryValues.begin() + 1 + _stateVars.size() + _function->parameters().size();
+		stateLast = stateFirst + _stateVars.size();
 	}
 	else
 	{
 		stateFirst = _summaryValues.begin() + 1;
-		stateLast = stateFirst + m_stateVariables.size();
+		stateLast = stateFirst + _stateVars.size();
 	}
 
 	vector<string> stateArgs(stateFirst, stateLast);
-	solAssert(stateArgs.size() == m_stateVariables.size(), "");
+	solAssert(stateArgs.size() == _stateVars.size(), "");
 
 	vector<string> stateCex;
 	for (unsigned i = 0; i < stateArgs.size(); ++i)
 	{
-		auto var = m_stateVariables.at(i);
+		auto var = _stateVars.at(i);
 		if (var->type()->isValueType())
 			stateCex.emplace_back(var->name() + " = " + stateArgs.at(i));
 	}
@@ -1420,11 +1426,11 @@ string CHC::generatePostStateCounterexample(FunctionDefinition const* _function,
 	return boost::algorithm::join(stateCex, ", ");
 }
 
-string CHC::generatePreTxCounterexample(FunctionDefinition const& _function, vector<string> const& _summaryValues)
+string CHC::generatePreTxCounterexample(vector<VariableDeclaration const*> const& _stateVars, FunctionDefinition const& _function, vector<string> const& _summaryValues)
 {
 	/// The signature of a function summary predicate is: summary(error, preStateVars, preInputVars, postInputVars, outputVars).
 	/// Here we are interested in preInputVars.
-	vector<string>::const_iterator first = _summaryValues.begin() + m_stateSorts.size() + 1;
+	vector<string>::const_iterator first = _summaryValues.begin() + _stateVars.size() + 1;
 	vector<string>::const_iterator last = first + _function.parameters().size();
 	vector<string> functionArgsCex(first, last);
 	vector<string> functionArgs;

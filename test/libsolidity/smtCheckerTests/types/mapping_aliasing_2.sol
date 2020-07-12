@@ -33,9 +33,3 @@ contract C
 // Warning 4661: (397-417): Assertion violation happens here
 // Warning 4661: (463-481): Assertion violation happens here
 // Warning 4661: (533-557): Assertion violation happens here
-// Warning 4661: (397-417): Assertion violation happens here
-// Warning 4661: (463-481): Assertion violation happens here
-// Warning 4661: (533-557): Assertion violation happens here
-// Warning 4661: (397-417): Assertion violation happens here
-// Warning 4661: (463-481): Assertion violation happens here
-// Warning 4661: (533-557): Assertion violation happens here

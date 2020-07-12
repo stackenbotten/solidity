@@ -22,5 +22,3 @@ contract C
 }
 // ----
 // Warning 4661: (338-355): Assertion violation happens here
-// Warning 4661: (338-355): Assertion violation happens here
-// Warning 4661: (338-355): Assertion violation happens here
