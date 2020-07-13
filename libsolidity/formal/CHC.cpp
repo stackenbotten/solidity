@@ -1236,6 +1236,9 @@ void CHC::checkAndReportTarget(
 	string _unknownMsg
 )
 {
+	if (m_unsafeTargets.count(_scope) && m_unsafeTargets.at(_scope).count(_target.type))
+		return;
+
 	createErrorBlock();
 	connectBlocks(_target.value, error(), _target.constraints && (_target.errorId == _errorId));
 	auto const& [result, model] = query(error(), _scope->location());
