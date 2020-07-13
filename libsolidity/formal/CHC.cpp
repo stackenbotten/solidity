@@ -1223,7 +1223,7 @@ void CHC::checkAssertTarget(ASTNode const* _scope, CHCVerificationTarget const& 
 		solAssert(it != m_errorIds.end(), "");
 		unsigned errorId = it->second;
 
-		checkAndReportTarget(assertion, _target, errorId, 4661_error, "Assertion violation happens here");
+		checkAndReportTarget(assertion, _target, errorId, 6328_error, "Assertion violation happens here");
 	}
 }
 
