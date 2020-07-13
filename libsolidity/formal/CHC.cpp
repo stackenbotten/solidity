@@ -1406,13 +1406,13 @@ string CHC::generatePostStateCounterexample(vector<VariableDeclaration const*> c
 	vector<string>::const_iterator stateLast;
 	if (_function)
 	{
-		stateFirst = _summaryValues.begin() + 1 + _stateVars.size() + _function->parameters().size();
-		stateLast = stateFirst + _stateVars.size();
+		stateFirst = _summaryValues.begin() + 1 + static_cast<int>(_stateVars.size()) + static_cast<int>(_function->parameters().size());
+		stateLast = stateFirst + static_cast<int>(_stateVars.size());
 	}
 	else
 	{
 		stateFirst = _summaryValues.begin() + 1;
-		stateLast = stateFirst + _stateVars.size();
+		stateLast = stateFirst + static_cast<int>(_stateVars.size());
 	}
 
 	vector<string> stateArgs(stateFirst, stateLast);
@@ -1433,8 +1433,8 @@ string CHC::generatePreTxCounterexample(vector<VariableDeclaration const*> const
 {
 	/// The signature of a function summary predicate is: summary(error, preStateVars, preInputVars, postInputVars, outputVars).
 	/// Here we are interested in preInputVars.
-	vector<string>::const_iterator first = _summaryValues.begin() + _stateVars.size() + 1;
-	vector<string>::const_iterator last = first + _function.parameters().size();
+	vector<string>::const_iterator first = _summaryValues.begin() + static_cast<int>(_stateVars.size()) + 1;
+	vector<string>::const_iterator last = first + static_cast<int>(_function.parameters().size());
 	vector<string> functionArgsCex(first, last);
 	vector<string> functionArgs;
 
