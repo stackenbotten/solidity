@@ -14,7 +14,7 @@ contract C
 	}
 }
 // ----
-// Warning 4661: (202-226): Assertion violation happens here
+// Warning 6328: (202-226): Assertion violation happens here
 // Warning 8115: (110-120): Assertion checker does not yet support the type of this variable.
 // Warning 7650: (124-127): Assertion checker does not yet support this expression.
 // Warning 8364: (124-125): Assertion checker does not yet implement type struct C.S memory

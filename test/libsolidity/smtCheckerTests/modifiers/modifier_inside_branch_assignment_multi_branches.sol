@@ -34,5 +34,5 @@ contract C {
 	}
 }
 // ----
-// Warning 4661: (516-534): Assertion violation happens here
-// Warning 4661: (573-587): Assertion violation happens here
+// Warning 6328: (516-534): Assertion violation happens here
+// Warning 6328: (573-587): Assertion violation happens here

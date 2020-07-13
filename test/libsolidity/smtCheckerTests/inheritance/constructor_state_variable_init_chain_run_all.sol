@@ -22,7 +22,7 @@ contract A is B {
 }
 
 // ----
-// Warning 4661: (296-314): Assertion violation happens here
+// Warning 6328: (296-314): Assertion violation happens here
 // Warning 4144: (171-176): Underflow (resulting value less than 0) happens here
 // Warning 2661: (171-176): Overflow (resulting value larger than 2**256 - 1) happens here
 // Warning 2661: (230-235): Overflow (resulting value larger than 2**256 - 1) happens here
